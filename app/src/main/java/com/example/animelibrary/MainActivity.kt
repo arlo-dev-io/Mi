@@ -8,7 +8,10 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -39,6 +43,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -56,12 +61,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 
@@ -139,8 +146,8 @@ fun AnimeLibraryScreen(vm: AnimeViewModel = viewModel()) {
         AddAnimeDialog(
             defaultCategory = selected,
             onDismiss = { showAddDialog = false },
-            onSave = { title, poster, watch, category ->
-                vm.add(title, poster, watch, category)
+            onSave = { title, posterLink, posterPhoto, watch, category ->
+                vm.add(title, posterLink, posterPhoto, watch, category)
                 showAddDialog = false
             }
         )
@@ -235,12 +242,17 @@ fun AnimePosterCard(
 fun AddAnimeDialog(
     defaultCategory: Category,
     onDismiss: () -> Unit,
-    onSave: (title: String, posterUrl: String, watchUrl: String, category: Category) -> Unit
+    onSave: (title: String, posterLink: String, posterPhoto: Uri?, watchUrl: String, category: Category) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var posterUrl by remember { mutableStateOf("") }
+    var pickedPhoto by remember { mutableStateOf<Uri?>(null) }
     var watchUrl by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(defaultCategory) }
+
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri -> if (uri != null) pickedPhoto = uri }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -253,12 +265,39 @@ fun AddAnimeDialog(
                     label = { Text("Title") },
                     singleLine = true
                 )
-                OutlinedTextField(
-                    value = posterUrl,
-                    onValueChange = { posterUrl = it },
-                    label = { Text("Poster image URL (optional)") },
-                    singleLine = true
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            photoPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        }
+                    ) {
+                        Text(if (pickedPhoto == null) "Choose photo" else "Change photo")
+                    }
+                    pickedPhoto?.let { photo ->
+                        AsyncImage(
+                            model = photo,
+                            contentDescription = "Selected poster",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(width = 44.dp, height = 60.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                        )
+                        TextButton(onClick = { pickedPhoto = null }) { Text("Remove") }
+                    }
+                }
+                if (pickedPhoto == null) {
+                    OutlinedTextField(
+                        value = posterUrl,
+                        onValueChange = { posterUrl = it },
+                        label = { Text("or paste a poster link (optional)") },
+                        singleLine = true
+                    )
+                }
                 OutlinedTextField(
                     value = watchUrl,
                     onValueChange = { watchUrl = it },
@@ -283,7 +322,7 @@ fun AddAnimeDialog(
             Button(
                 onClick = {
                     if (title.isNotBlank() && watchUrl.isNotBlank()) {
-                        onSave(title, posterUrl, watchUrl, category)
+                        onSave(title, posterUrl, pickedPhoto, watchUrl, category)
                     }
                 }
             ) { Text("Save") }

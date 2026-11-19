@@ -1,8 +1,10 @@
 package com.example.animelibrary
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -27,12 +29,24 @@ class AnimeViewModel(app: Application) : AndroidViewModel(app) {
         _selected.value = category
     }
 
-    fun add(title: String, posterUrl: String, watchUrl: String, category: Category) {
+    /**
+     * If a gallery photo was picked it wins; otherwise the pasted poster link is used.
+     * The photo is only copied here, on Save, so cancelling the dialog leaves no stray files.
+     */
+    fun add(
+        title: String,
+        posterLink: String,
+        posterPhoto: Uri?,
+        watchUrl: String,
+        category: Category
+    ) {
         viewModelScope.launch {
+            val poster = posterPhoto?.let { savePoster(getApplication(), it) }
+                ?: normalizeUrl(posterLink)
             dao.insert(
                 Anime(
                     title = title.trim(),
-                    posterUrl = normalizeUrl(posterUrl),
+                    posterUrl = poster,
                     watchUrl = normalizeUrl(watchUrl),
                     category = category
                 )
@@ -45,7 +59,10 @@ class AnimeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun remove(anime: Anime) {
-        viewModelScope.launch { dao.delete(anime) }
+        viewModelScope.launch {
+            dao.delete(anime)
+            launch(Dispatchers.IO) { deletePosterFile(anime.posterUrl) }
+        }
     }
 }
 
